@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="splash">#0B5C78</color>
+    <color name="teal_oscuro">#0B5C78</color>
+    <color name="teal">#087EA0</color>
+    <color name="fondo">#EAF6F9</color>
+    <color name="borde">#CFE6EC</color>
+    <color name="naranja">#D9480F</color>
+    <color name="rojo">#C92A2A</color>
+    <color name="icon_fondo">#0B5C78</color>
+</resources>
