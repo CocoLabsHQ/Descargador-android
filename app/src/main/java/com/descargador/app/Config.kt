@@ -7,7 +7,7 @@ package com.descargador.app
  */
 object Config {
     const val GITHUB_USER = "Falkenreich"
-    const val GITHUB_REPO = "descargador-android"
+    const val GITHUB_REPO = "Descargador-android"
 
     const val REPO_URL = "https://github.com/$GITHUB_USER/$GITHUB_REPO"
     const val ISSUES_NUEVO = "$REPO_URL/issues/new"

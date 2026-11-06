@@ -33,7 +33,6 @@ object Feedback {
         val uri = Uri.parse(Config.ISSUES_NUEVO).buildUpon()
             .appendQueryParameter("title", titulo)
             .appendQueryParameter("body", informe(ctx, mensaje, detalleError).take(3000))
-            .appendQueryParameter("labels", "feedback")
             .build()
         ctx.startActivity(Intent(Intent.ACTION_VIEW, uri))
     }

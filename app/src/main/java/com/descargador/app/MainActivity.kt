@@ -32,8 +32,12 @@ class MainActivity : Activity() {
     companion object {
         const val PROCESO = "descarga"
         const val SPLASH_MIN_MS = 1500L
-        val RED = listOf("timed out", "Name or service", "Temporary failure", "Connection",
-            "Network", "Errno", "HTTP Error 5", "IncompleteRead", "SSL", "Unable to download")
+        // Solo estos errores se consideran "se cortó el internet" y se reintentan solos.
+        // Cualquier otro (YouTube bloquea, formato no disponible, etc.) se muestra tal cual.
+        val RED = listOf("timed out", "Name or service", "Temporary failure", "Connection reset",
+            "Connection refused", "Connection aborted", "Network is unreachable", "No route to host",
+            "Errno -2", "Errno 101", "Errno 104", "Errno 110", "Errno 111",
+            "HTTP Error 5", "IncompleteRead", "SSL:", "EOF occurred")
     }
 
     private val formatos = mapOf(
@@ -53,6 +57,7 @@ class MainActivity : Activity() {
     private lateinit var estado: TextView
     private lateinit var log: TextView
     private lateinit var initThread: Thread
+    private lateinit var updateThread: Thread
     @Volatile private var initError: String? = null
     @Volatile private var cancelado = false
 
@@ -75,6 +80,14 @@ class MainActivity : Activity() {
                 YoutubeDL.getInstance().init(application)
                 FFmpeg.getInstance().init(application)
             } catch (e: Exception) { initError = e.message ?: e.toString() }
+        }
+        // yt-dlp que trae la app se queda viejo (YouTube cambia seguido): al abrir se baja el último.
+        // Si no hay internet simplemente se sigue con el que ya está.
+        updateThread = thread {
+            try {
+                initThread.join()
+                if (initError == null) YoutubeDL.getInstance().updateYoutubeDL(application)
+            } catch (e: Exception) { /* sin internet o GitHub no responde: no pasa nada */ }
         }
 
         val raiz = FrameLayout(this)
@@ -528,12 +541,22 @@ class MainActivity : Activity() {
             }
         }
 
+    /** yt-dlp mezcla avisos (WARNING) con el error real (ERROR:): mostramos el error real. */
+    private fun resumen(m: String): String {
+        val errores = m.lines().filter { it.contains("ERROR:") }
+        return if (errores.isNotEmpty()) errores.joinToString("\n").take(500) else m.takeLast(400)
+    }
+
     private fun trabajo(link: String, audio: Boolean, f: String, h: Int) {
         val tmp = File(getExternalFilesDir(null), "tmp").apply { deleteRecursively(); mkdirs() }
         try {
             ui { estado.text = "Preparando (la primera vez tarda unos segundos)..." }
             initThread.join()
             initError?.let { throw RuntimeException("No se pudo iniciar yt-dlp: $it") }
+            if (updateThread.isAlive) {
+                ui { estado.text = "Actualizando el motor de descarga (solo tarda un momento)..." }
+                updateThread.join(60_000)
+            }
 
             var ok = false
             var intento = 0
@@ -545,15 +568,19 @@ class MainActivity : Activity() {
                         processId = PROCESO,
                         callback = { prog, eta, _ ->
                             ui {
-                                barra.progress = prog.toInt().coerceIn(0, 100)
-                                estado.text = "${prog.toInt()}%  -  quedan ${eta}s"
+                                if (prog >= 0) {
+                                    barra.progress = prog.toInt().coerceIn(0, 100)
+                                    estado.text = if (eta >= 0) "${prog.toInt()}%  -  quedan ${eta}s" else "${prog.toInt()}%"
+                                } else {
+                                    estado.text = "Descargando..."
+                                }
                             }
                         })
                     ok = true
                 } catch (e: Exception) {
                     if (cancelado) break
                     val m = e.message ?: ""
-                    ui { log.append(m.take(300) + "\n") }
+                    ui { log.append(resumen(m) + "\n") }
                     if (RED.none { m.contains(it, ignoreCase = true) }) throw e
                     for (s in 8 downTo 1) {
                         if (cancelado) break
@@ -568,7 +595,7 @@ class MainActivity : Activity() {
                 else -> ui { estado.text = "No se pudo completar tras varios intentos" }
             }
         } catch (e: Exception) {
-            ui { log.append((e.message ?: e.toString()).take(500) + "\n"); estado.text = "Falló. Revisa el detalle abajo." }
+            ui { log.append(resumen(e.message ?: e.toString()) + "\n"); estado.text = "Falló. Revisa el detalle abajo." }
         } finally {
             ui { ocupado(false) }
         }

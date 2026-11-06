@@ -18,7 +18,7 @@ keytool -genkeypair -v -keystore ~/descargador.jks -alias descargador -keyalg RS
 
 # 4) Repositorio público y primer push
 git init -b main && git add . && git commit -m "Descargador personalizado"
-gh repo create Falkenreich/descargador-android --public --source=. --remote=origin --push
+gh repo create Falkenreich/Descargador-android --public --source=. --remote=origin --push
 
 # 5) Secretos para que GitHub firme el APK
 base64 -w0 ~/descargador.jks | gh secret set KEYSTORE_BASE64
@@ -31,7 +31,7 @@ git tag v0.2 && git push origin v0.2
 gh run watch                          # espera el tilde verde
 ```
 
-APK: https://github.com/Falkenreich/descargador-android/releases/latest
+APK: https://github.com/Falkenreich/Descargador-android/releases/latest
 
 Versiones siguientes: editar, `git add . && git commit -m "..." && git push`, luego `git tag v0.3 && git push origin v0.3`.
 En los celulares: botón **Actualizar**.

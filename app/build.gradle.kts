@@ -12,8 +12,8 @@ android {
         minSdk = 29
         targetSdk = 34
         // GitHub Actions pasa estos valores según la etiqueta (v0.3 -> versionName 0.3)
-        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 2
-        versionName = (project.findProperty("versionName") as String?) ?: "0.2"
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 3
+        versionName = (project.findProperty("versionName") as String?) ?: "0.3"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
