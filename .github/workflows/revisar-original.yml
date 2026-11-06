@@ -1,0 +1,115 @@
+name: Revisar versión nueva del original
+
+# Cada semana (lunes) revisa si salió una versión nueva de la biblioteca youtubedl-android,
+# que es la base de la app. Si salió: prueba que compile, publica una versión nueva
+# y las apps de tus allegados avisan solas ("Hay una versión nueva").
+# Para cambiar la frecuencia edita la línea cron (ej.: "17 12 */3 * *" = cada 3 días).
+on:
+  schedule:
+    - cron: "17 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write     # subir el cambio y la etiqueta
+  actions: write      # lanzar la compilación de la versión nueva
+  issues: write       # avisar si algo falla
+
+env:
+  # "si"  = publica sola si compila bien
+  # "no"  = solo abre un aviso (Issue) y esperas tu aprobación
+  PUBLICAR_SOLO: "si"
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Buscar versión nueva
+        id: ver
+        run: |
+          ACTUAL=$(grep -oP 'youtubedl-android:library:\K[0-9.]+' app/build.gradle.kts | head -1)
+          NUEVA=$(curl -fsSL https://repo1.maven.org/maven2/io/github/junkfood02/youtubedl-android/library/maven-metadata.xml \
+                  | grep -oP '(?<=<version>)[^<]+' | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -1)
+          echo "Actual: $ACTUAL  -  Última publicada: $NUEVA"
+          if [ -z "$ACTUAL" ] || [ -z "$NUEVA" ]; then echo "::error::No se pudo leer alguna versión"; exit 1; fi
+          MAYOR=$(printf '%s\n%s\n' "$ACTUAL" "$NUEVA" | sort -V | tail -1)
+          if [ "$MAYOR" != "$ACTUAL" ]; then
+            echo "hay_nueva=si" >> "$GITHUB_OUTPUT"
+            echo "nueva=$NUEVA" >> "$GITHUB_OUTPUT"
+            echo "actual=$ACTUAL" >> "$GITHUB_OUTPUT"
+          else
+            echo "Todo al día."
+            echo "hay_nueva=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Avisar y salir (modo manual o falta el módulo ffmpeg)
+        if: steps.ver.outputs.hay_nueva == 'si'
+        id: aviso
+        run: |
+          NUEVA="${{ steps.ver.outputs.nueva }}"
+          MOTIVO=""
+          if [ "$PUBLICAR_SOLO" != "si" ]; then MOTIVO="Hay una versión nueva del original ($NUEVA) y la publicación automática está desactivada."; fi
+          if ! curl -fsI "https://repo1.maven.org/maven2/io/github/junkfood02/youtubedl-android/ffmpeg/$NUEVA/ffmpeg-$NUEVA.aar" > /dev/null; then
+            MOTIVO="Salió youtubedl-android $NUEVA pero todavía no está el módulo ffmpeg de esa versión."
+          fi
+          if [ -n "$MOTIVO" ]; then
+            TITULO="youtubedl-android $NUEVA disponible"
+            if [ "$(gh issue list --state open --search "$TITULO in:title" --json number --jq length)" = "0" ]; then
+              gh issue create --title "$TITULO" --body "$MOTIVO"
+            fi
+            echo "parar=si" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Actualizar dependencia
+        if: steps.ver.outputs.hay_nueva == 'si' && steps.aviso.outputs.parar != 'si'
+        run: |
+          NUEVA="${{ steps.ver.outputs.nueva }}"
+          sed -i -E "s#(youtubedl-android:(library|ffmpeg):)[0-9.]+#\1$NUEVA#" app/build.gradle.kts
+          grep youtubedl-android app/build.gradle.kts
+
+      - uses: actions/setup-java@v4
+        if: steps.ver.outputs.hay_nueva == 'si' && steps.aviso.outputs.parar != 'si'
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.ver.outputs.hay_nueva == 'si' && steps.aviso.outputs.parar != 'si'
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Probar que compile con la versión nueva
+        id: prueba
+        if: steps.ver.outputs.hay_nueva == 'si' && steps.aviso.outputs.parar != 'si'
+        continue-on-error: true
+        run: gradle assembleRelease --no-daemon
+
+      - name: Avisar que no compila
+        if: steps.prueba.outcome == 'failure'
+        run: |
+          NUEVA="${{ steps.ver.outputs.nueva }}"
+          TITULO="youtubedl-android $NUEVA no compila con la app"
+          if [ "$(gh issue list --state open --search "$TITULO in:title" --json number --jq length)" = "0" ]; then
+            gh issue create --title "$TITULO" --body "Salió una versión nueva del original pero la app no compila con ella. La app sigue en la versión anterior. Revisa: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
+
+      - name: Publicar versión nueva
+        if: steps.prueba.outcome == 'success'
+        run: |
+          NUEVA="${{ steps.ver.outputs.nueva }}"
+          ULTIMA=$(git tag -l 'v*' | sort -V | tail -1)
+          ULTIMA=${ULTIMA:-v0.0}
+          SIGUIENTE=$(echo "${ULTIMA#v}" | awk 'BEGIN{FS=OFS="."} {$NF=$NF+1; print}')
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle.kts
+          git commit -m "Actualiza youtubedl-android a $NUEVA (automático)"
+          git push origin HEAD:main
+          git tag "v$SIGUIENTE"
+          git push origin "v$SIGUIENTE"
+          # Las etiquetas subidas por una automatización no lanzan la compilación solas: la lanzamos a mano
+          gh workflow run build.yml --ref "v$SIGUIENTE"
+          echo "Publicando v$SIGUIENTE con youtubedl-android $NUEVA"
