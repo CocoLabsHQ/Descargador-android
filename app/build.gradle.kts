@@ -11,9 +11,9 @@ android {
         applicationId = "com.descargador.app"
         minSdk = 29
         targetSdk = 34
-        // GitHub Actions pasa estos valores según la etiqueta (v0.3 -> versionName 0.3)
-        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 3
-        versionName = (project.findProperty("versionName") as String?) ?: "0.3"
+        // GitHub Actions pasa estos valores según la etiqueta (v0.4 -> versionName 0.4)
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 4
+        versionName = (project.findProperty("versionName") as String?) ?: "0.4"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
